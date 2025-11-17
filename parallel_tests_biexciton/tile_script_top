@@ -1,0 +1,557 @@
+ 
+        program readwfnew
+	implicit none
+
+	include "omp_lib.h"
+
+	integer ::  nthreads, tid
+! --------------------------------------------------------------------
+! Reads phi(k)s from WAVECAR
+! --------------------------------------------------------------------
+
+!>>>>>>>>>>>>>>>>>>>>>>   Declare variables  <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+
+	integer     npw,nkpt, nband, ae, nLU, be, n, l, qq,nijp, jae
+	integer     nbandmin, nbandmax, ndiff, nHO,ndiffU, ndiffO,ic
+
+	real(8)     emax, kpt(3), eval
+	real(8)     a1, b1, c1, A(3,3)       ! Unit-vectors of the cell
+
+	character*5 code
+        integer     POTIM, Nexcc,Ndw
+!------------------------- 
+! New format of WAVECAR:
+!--------------------------  
+	integer     irec, irecl   
+	real(8)     rdum, rispin, rtag
+
+	complex(4), allocatable :: coef(:)		
+	real(8)     fweight(20000), eig(20000), gweight(20000)
+
+	integer     i,j,k,ii,kk,iband, ikpt,nxn,ee,hh,ss
+	
+	real(8)     inkpt, inband, npl
+!------------------------------
+! For transition dipole moment	
+!------------------------------
+	integer  n5                     ! dimension of the operator nubla
+        real(8)  gx, gy, gz
+	integer, allocatable :: XX(:)
+	integer, allocatable :: YY(:)
+	integer, allocatable :: ZZ(:)
+        
+        integer, allocatable :: ccc(:,:,:)
+        integer, allocatable :: Nexc(:)
+        integer, allocatable :: ce(:,:)
+        integer, allocatable :: ch(:,:)
+       
+        integer, allocatable :: cveeh(:,:,:,:)
+        integer, allocatable :: cvehe(:,:,:,:)
+        integer, allocatable :: cvhhe(:,:,:,:)
+        integer, allocatable :: cvheh(:,:,:,:)
+        
+!        complex(4)  JX(9400,9400)
+!        complex(4)  JY(9400,9400)
+!        complex(4)  dd1,dd2,dd3
+!        complex(4)  JZ(9400,9400)
+
+        complex(8)  q,qc,curx,cury,curz,fx,fy,fz,f
+        complex(8)  psia,psib,psic,Rh,Rp,Rshh,Rshp
+        complex(8)  psiab,psicab,psicccb,psicb,psicc_b,psic_cb
+        
+!--------------------------------
+! coefficients of wave functions:
+!--------------------------------
+        complex(8), allocatable :: ac(:,:)
+        complex(8), allocatable :: dc(:,:)
+        complex(4), allocatable :: psi(:,:)
+
+        complex(4), allocatable :: VCeeh(:)
+        complex(4), allocatable :: VCheh(:)
+        complex(4), allocatable :: VCehe(:)
+        complex(4), allocatable :: VChhe(:)
+
+        CHARACTER(LEN=20) :: t1,t2,t3
+        INTEGER :: n1,n2
+
+!---------------------------
+! DIMENSIONS OF MATRICES
+!---------------------------
+!        INTEGER SIZE            ! LENGTH OF coupling matrix
+!        parameter(SIZE=500)
+!	INTEGER sqSIZE          ! LENGTH OF transition dipole 
+!        parameter(sqSIZE=90000)
+	
+!----------------------------	
+! Normalization parameters:
+!----------------------------
+        INTEGER digit, du, ddo,jj
+!        character*20 filename, filename1
+        character*20 dumy
+!       integer time,t,i,j,nxn
+        double precision overlap, PV,R2
+        double precision w,gamma_b,gamma_s,denom,num,denom1
+        double precision NORM1,NORM2, VV, r,denom2,denomln,denomnl
+        double precision repsi, impsi, deltaexc,Eaeki,Ebln,Ejiw,Ebnl
+!        double precision D, DD (SIZE,SIZE)  ! Normalized coupling elements
+!-----------------------
+! energy:
+!-----------------------
+!       double precision  e(1500), OCUPn(1500), NN(1500)
+        double precision, allocatable :: e(:)
+        double precision, allocatable :: OCUPn(:)
+        double precision, allocatable :: NN(:)
+        double precision, allocatable :: Eexc(:)
+!, f(50,50,50), fs(50,50,50)
+        double precision  dE,dw,hiw,low,RRh,RRp,RRshh,RRshp
+
+
+!>>>>>>>>>>>>>>>>>>   begining the main program  <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+
+!-------------------------------------------	
+! Set bands we're interested in
+!-------------------------------------------
+        open(75,file='input_overlap')
+	     read(75,*) nbandmin
+             read(75,*) nHO
+	     read(75,*) nbandmax
+            ! read(75,*) POTIM
+	close (75)    
+        
+        write(*,*) ' check active window size ! '
+       
+           open(425,file='active_window')
+            read(425,*) ddo
+            read(425,*) du
+            read(425,*) Nexcc
+ !           read(425,*) Ndw
+ !           read(425,*) low
+ !           read(425,*) hiw
+            read(425,*) gamma_b
+           close(425)
+
+          write(*,*)'ddo=',ddo
+          write(*,*)'du=',du
+
+         write(*,*) ' check consistency with "energy_pop" !'
+         write(*,*) 'nbandmin, has to be ge',nbandmin
+!         read(*,*) nbandmin
+!        write(*,*) 'nbandmin=',nbandmin
+
+        write(*,*) 'nbandmax, has to be le',nbandmax
+!	read(*,*) nbandmax
+
+        write(*,*)'nHO', nHO
+
+        nLU=nHO+1
+
+        allocate(e(nbandmax-nbandmin+1))
+        allocate(NN(nbandmax-nbandmin+1))
+        allocate(OCUPn(nbandmax-nbandmin+1))
+
+
+        write(*,*) 'nbandmin=',nbandmin
+        write(*,*) 'nHO=', nHO
+        write(*,*) 'nbandmax=',nbandmax
+!       write(*,*) 'ndiff=', ndiff,' ndiffO=', ndiffO
+!---------------------------------------------------------------------
+! Read input "energy_pop" files and input parameters
+!---------------------------------------------------------------------	
+	write(*,*) ' check file "energy_pop" !'        
+	open(11,file="energy_pop")
+	do i=nbandmin, nbandmax
+           read(11,*) NN(i), e(i), OCUPn(i) 
+!          write(*,*) NN(i), e(i), OCUPn(i)        
+        enddo
+
+        close(11)
+!---------------------------------------	
+! OUTPUT FILES:	
+!---------------------------------------
+         open(18,file="overlap")
+!-----------------------------------------
+! Read in first WAVECAR: |psi(t)>
+!----------------------------------------
+        open(12,file="WAVECAR",status="old",form="unformatted", 
+     c          access='direct',recl=1500000)
+
+! Read in from WAVECAR:
+! the number of k-points
+! the number of bands
+! the energy maximum
+! the cell dimensions
+! the type of VASP code
+
+        read(12,rec=1) rdum, rispin, rtag
+	     irecl = rdum
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!  note to people...
+!  we have to open close 12 twice:  
+!  it's direct access and you need the record length so 
+!  that you can read the information, but you don't know the record length
+!  until you open the file and read rdum (yes, it changes for every system
+!  from vasp.).  thus you have to open it to read rdum so you can use rdum
+!   
+!  as a second important note- if you are having problems reading the 
+!  coefficients, check rtag (use a write statement)...
+!
+!    rtag = 45210     the coefficients are written in double precision
+!    rtag = 45200     the coefficients are written in single precision
+!
+!   gotta love the VASP people...
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+	
+	close(12)
+        write(*,*)'irecl =',irecl
+        write(*,*)'rdum rispin rtag:',rdum, rispin, rtag
+
+        open(12,file="WAVECAR",status="old",form="unformatted", 
+     c          access='direct',recl=irecl)
+
+             read(12,rec=1) rdum, rispin, rtag
+             read(12,rec=2) inkpt, inband, emax, ((A(i,j),i=1,3),j=1,3)
+          write(*,*)'2-nd time rdum, rispin, rtag:',rdum, rispin, rtag
+          write(*,*)'inkpt, inband, emax:',inkpt, inband, emax
+
+!----------- for CASE OF RECTANGULAR UNIT CELL a1,b1,c1 are unit-vectors: 
+                 a1=A(1,1)
+                 b1=A(2,2)
+                 c1=A(3,3)
+
+             write(*,*) 'a1=',a1	
+             write(*,*) 'b1=',b1
+             write(*,*) 'c1=',c1     
+             
+	     nkpt = inkpt
+	     nband = inband
+
+	     write(*,*) 'number k-points nkpt=',nkpt
+	     
+	!>>>>>>>>>>>>>>>>>> FOR TEST <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+	!      write(19,*) 
+	!      write(19,*) 'nkpt  =',nkpt
+	!      write(19,*) 'nband =',nband
+	!      write(19,*) 'emax  =',emax
+	!      write(19,*) 'A='
+	!      write(19,'(3X,3(1X,f8.3))') (A(i,1),i=1,3)
+	!      write(19,'(3X,3(1X,f8.3))') (A(i,2),i=1,3)
+	!      write(19,'(3X,3(1X,f8.3))') (A(i,3),i=1,3)
+	!>>>>>>>>>>>>>>>>>>>>>>>><<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+
+            irec = 3
+
+        DO 100 ikpt=1, 1 !NOTE RESTRICTED TO GAMMA POINT ONLY
+
+! Read in from WAVECAR:
+! the number of pw (plane waves) wave fns?
+! the k-point? 
+
+         read(12,rec=irec) npl,kpt(1:3),(eig(j),gweight(j),fweight(j), 
+     c                    j=1,
+     c                    nband, 1)
+
+	 irec = irec + 1	
+         npw = npl
+
+
+! Brad thinks vasp writes in real values only (i.e. not integer)
+!        write(*,*) "length = ", irecl, "  npw = ", npw
+
+       !>>>>>>>>>>>>>>> FOR TEST <<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+       !    write(19,*) 'npw= ', npw
+       !    write(19,*) 'along x kpt= ', kpt(1)
+       !    write(19,*) 'along y kpt= ', kpt(2)
+       !    write(19,*) 'along z kpt= ', kpt(3)
+       !>>>>>>>>>>>>>>>>>>>>>><<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<	
+
+	    allocate(XX(npw))
+	    allocate(YY(npw))
+	    allocate(ZZ(npw))
+
+!---------------- CALCULATIONS OF an OPERATOR NUBLA(r)-----------------------
+!                 FOR FINDING TRANSITION DIPOLE MOMENT
+
+           CALL find_r_dipmom(a1,b1,c1,emax,npw,XX,YY,ZZ,gx,gy,gz)
+!----------------------------------------------------------------------------
+            allocate(coef(npw))
+            allocate(ac(npw,nbandmax-nbandmin+1))
+	    ic = 1 
+!******************************************************************
+            DO 89 iband = 1, nband
+
+!----------------------- Read in from WAVECAR:-----------------------------
+
+                read(12,rec=irec) (coef(i),i=1,npw)
+		irec = irec + 1
+!---------------------
+! Create matrix (ac):
+!---------------------
+
+! row: coefficients for plane waves
+! column: coeff of 1st plane wave for bands interested in 
+! in ac(i,ic), i=1..npw, ic=1..ndiff corresponding to nbandmin..nbandmax
+		
+                  if(iband.ge.nbandmin.and.iband.le.nbandmax) then
+	            do i = 1,npw
+	    	        ac(i,ic) = coef(i)
+	            enddo
+	            ic = ic+1
+	        end if
+
+89	     CONTINUE         
+!********************************************************************
+           deallocate(coef)
+
+100	CONTINUE
+
+	close(unit=12)
+
+        write (*,*)'ac-coefficients were found ic=',ic-1
+!       write (*,*)'ac-coefficients'
+!                do i = 410,580
+!                       write(*,*) 'i=',i
+!                       write(*,*) 'a(i)=',a(i,ic-5)
+!	            enddo
+
+                write(*,*) 'npw=',npw	
+
+           do i = nbandmin,nbandmax
+
+            overlap = 0.d0
+
+             do k = 1,npw
+	       overlap=overlap+conjg(ac(k,i))*ac(k,i)
+             end do
+           write(18,*) i, overlap
+           end do
+           close(18)
+           write (*,*)'overlap file computed'
+
+!   in ac(i,ic), i=1..npw, ic=nbandmin..nbandmax corresponding to nbandmin..nbandmax
+                                             
+!  exciton energies written in excE file as 
+!  E_k k - exciton state energy, k=1,Nexcc
+!  k=1 corresponds to the lowest energy
+
+! exciton wavefunction written in excwf file as 
+!  k - exciton state number
+! (ddo+1)(du+1) X 4 lines of 
+!  ...............
+!  j particle level
+!  i hole level
+!  Re[psi^k_ji]
+!  Im[psi^k_ji]
+!  ...............
+! TRUNCATED exciton wavefunction written in excwf_trunc 
+! file where only Nk non-zero entries are recorded as 
+!  k - exciton state number
+! (Nk) X 4 lines of 
+!  ...............
+!  j particle level
+!  i hole level
+!  Re[psi^k_ji]
+!  Im[psi^k_ji]
+!  ...............
+! Nk are recorded in 'excwf_length' file
+! as k Nk
+!    ....
+            allocate(psi(Nexcc,(du+1)*(ddo+1)))
+            allocate(Eexc(Nexcc))
+            allocate(Nexc(Nexcc))
+
+
+!            emin=nHO+1
+!            hmin=nHO-ddo
+            open(112,file="excE")
+            open(113,file="excwf_trunc")
+            open(1213,file="excwf_length")
+
+            do k = 1,Nexcc! NOTE system specific
+!>>>>>>>>>>>>>>>>>>>>>>><<<<<<<<<<<<<<<<<<<<<<<<<
+             read(112,*) Eexc(k)
+             write(*,*)Eexc(k)
+ 
+             read(1213,*) ic,Nexc(ic)
+             write(*,*) ic,Nexc(ic)
+
+             if (ic.ne.k) then
+              write(*,*)"problem",ic,k
+             end if
+!<<<<<<<<<<<<<<<<<<<<<<<<>>>>>>>>>>>>>>>>>>>>>>>>
+            end do
+
+         ! counter of eh pairs: e,h -> integer
+          allocate(ccc(Nexcc,nLU+du+1,nLU+du+1))          
+          allocate(ce(Nexcc,(ddo+1)*(du+1)))
+          allocate(ch(Nexcc,(ddo+1)*(du+1)))
+
+          do k = 1,Nexcc
+           do i = 1,nLU+du+1
+            do j = 1,nLU+du+1
+             ccc(k,i,j)=0
+            end do
+           end do
+          end do
+
+            do k = 1,Nexcc! NOTE system specific      
+      
+             overlap = 0.d0       
+             read(113,*) ic
+
+             if (ic.ne.k) then
+              write(*,*)"problem",ic,k
+             end if
+
+             do i = 1,Nexc(ic) 
+
+             read(113,*)ee,hh,repsi,impsi
+             ce(ic,i)=ee
+             ch(ic,i)=hh
+             
+             ccc(ic,ee,hh)=i
+             psi(ic,i)=CMPLX(repsi,impsi) 
+!            write(*,*) ee,hh,psi(ic,ee-(nHO+1)+1,hh-(nHO-ddo)+1)
+             overlap=overlap+repsi*repsi+impsi*impsi
+
+	     end do
+             write(*,*)ic,' ',overlap,' ',Nexc(ic)
+	    end do
+            close(112)
+            close(113)
+            close(1213)
+
+            write(*,*) 'Psis have been read'
+
+           do k = 1,Nexcc! NOTE system specific
+!>>>>>>>>>>>>>>>>>>>><<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+            ic=0
+            do i = nHO-ddo,nHO
+!---------------------------------------------------------
+              do j = nLU,nLU+du
+!=========================================================
+               if (ccc(k,j,i).ne.0) then
+                ic=ic+1
+               end if
+!=========================================================
+              end do
+!---------------------------------------------------------
+            end do
+            
+            if (ic.ne.Nexc(k)) then
+             write(*,*)ic,Nexc(k)
+            end if
+!>>>>>>>>>>>>>>>>>>>>>>><<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+           end do
+           write(*,*)'ccc array checked'
+!           read(*,*) ic 
+!!!         deallocate(ccc)
+
+!NOTE read only VCe1ehe2 since V(e1,h,e,e2)=V(e2,e,h,e1)^*
+            open(18,file='VCe1ehe2')
+! NOTE NO need to add number of ksij 4plets to the beginning of the VC files
+! number of e1ehe2 
+!           e1hee2 
+!           matrix elements
+            nijp=(du+1)*(du+1)*(ddo+1)*(du+1)
+            write(*,*)'number of e1ehe2 matrix elements',nijp
+            allocate(VCeeh(nijp))
+
+            allocate(cveeh(du+1,du+1,ddo+1,du+1))
+
+            write(*,*)'VCeeh array is  allocated'
+             
+             ic=0
+             do qq=1,nijp
+!========================================================================
+!                   215         236         164         215 ( 1.329723000744372E-002,-2.224093068271295E-006)       
+              read(18,*)j,l,n,k,VCeeh(qq)    
+              cveeh(j-nLU+1,l-nLU+1,n-(nHO-ddo)+1,k-nLU+1)=qq
+              ic=ic+1
+!         write(*,*)q,ck(q),cs(q),ci(q),cj(q),VC2p(q)         
+!========================================================================
+             enddo
+
+             close(18)
+
+             write(*,*)'V(e1,e,h,e2)  matrix elements have been read'
+             write(*,*)'q=',ic,' nijp=',nijp
+             write(*,*)j,l,n,k,VCeeh(ic)
+
+             open(19,file='VCh1ehh2')
+! NOTE NO need to add number of ksij 4plets to the beginning of the VC files
+! number of h1ehh2 
+!           h1heh2 
+!           matrix elements
+            nijp=(ddo+1)*(ddo+1)*(ddo+1)*(du+1)
+            write(*,*)'number of h1ehh2 matrix elements',nijp
+            allocate(VCheh(nijp))
+
+            allocate(cvheh(ddo+1,du+1,ddo+1,ddo+1))
+
+            write(*,*)'VCheh array allocated'
+
+             ic=0
+             do qq=1,nijp
+!========================================================================
+!                   164         226         164         164 (-0.179791207988772     , 2.617794969849091E-005)      
+              read(19,*)j,l,n,k,VCheh(qq)    
+          cvheh(j-(nHO-ddo)+1,l-nLU+1,n-(nHO-ddo)+1,k-(nHO-ddo)+1)=qq
+              ic=ic+1
+!         write(*,*)q,ck(q),cs(q),ci(q),cj(q),VC2p(q)         
+!========================================================================
+             enddo
+
+             close(19)
+
+             write(*,*)'C V(h1,e,h,h2) matrix elements have been read'
+             write(*,*)'q=',ic,' nijp=',nijp
+             write(*,*)j,l,n,k,VCheh(ic)
+           
+            write(*,*)'HO-LU gap is Eg=', e(nLU)-e(nHO)
+            write(*,*)'exciton gap is Eg=', Eexc(1)
+            write(*,*)'2*gap is 2*Eg=', 2*(e(nLU)-e(nHO))
+            write(*,*)'2*exciton gap is', 2*Eexc(1)
+
+!           w=low*Eexc(1)!(e(nLU)-e(nHO)) !eV 
+!           write(*,*)'photon energy w=',w
+!
+!            write(*,*)'highest photon energy in Eg units', hiw
+!            dw=(hiw-low)*Eexc(1)/Ndw
+!           write(*,*)'dw=',dw
+                
+        ! gamma_b to be read from active_window
+            write(*,*)'width gamma? gamma=',gamma_b
+             qq=86
+             open(425,file='R_h_spec_nb_w86')
+             open(423,file='M2cab_h_spec_w86')
+! energy of initial exciton
+           w=Eexc(qq)      
+            
+            write(*,*)'w=',w
+
+            ss=300
+!            write(425,*)'{'           
+
+             RRh=0
+!             RRp=0
+!             RRshh=0
+!             RRshp=0
+
+		!The all Sum variable declared above here
+
+!--------------prepare for  OMP thread start
+
+!$OMP PARALLEL PRIVATE(nthreads, tid)
+
+
+        tid = OMP_GET_THREAD_NUM()
+        nthreads = OMP_GET_NUM_THREADS()
+
+	!---not included: arrays, gamma_b, ss, w, qq
+
+!$OMP SECTIONS PRIVATE(ae, be, dE, denom, deltaexc, ii, kk), 
+!$OMP& PRIVATE( Rh,Rp,Rshh,Rshp,l,n,psib,Ebln,denomln),
+!$OMP& PRIVATE(denomnl,j,i,psic,psicc_b,psicccb,jae, psia),
+!$OMP& PRIVATE(Ebnl,Eaeki,denom1,Ejiw,denom2,PV,jj,f,psic_cb)
+

@@ -1,0 +1,174 @@
+!---------------------------------------------------------
+              do be = 1,qq !Does not go past this? !Nexcc! exciton state sum
+!---------------------------------------------------------  
+! Rexc(c)-->biexc(a,b)=(|R2(a,b)|^2)*delta(Ec-(Ea+Eb))
+! Rh to be calculated for each ae,be
+               Rh=(0,0)
+!               Rp=(0,0)
+!               Rshh=(0,0)
+!               Rshp=(0,0)
+
+! w=Eexc(c)=Eexc(qq) the initial exciton energy          
+! check if the two excitons ae and be satisfy energy conservation w=Ea+Eb
+               dE=w-Eexc(ae)-Eexc(be)
+               denom=dE*dE + gamma_b*gamma_b
+               deltaexc=gamma_b/denom 
+               
+       if (deltaexc > 1/(gamma_b*ss)) then
+!>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>><<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<           
+               do ii = 1,Nexc(qq)
+!/////////////////////////////////////////////////////////
+                do kk = 1,Nexc(be)
+!\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\
+!==================hole spectator===================================
+!    read l,n common for the Theta_{j} and Theta_{-j} parts
+                l=ce(be,kk)
+                n=ch(be,kk)
+
+                psib=psi(be,kk)
+
+!         the Theta_l Theta_{-n} part
+             Ebln=e(l)-e(n)-Eexc(be)
+             denomln=Ebln*Ebln+gamma_b*gamma_b
+
+!         the Theta_{-l} Theta_{n} part
+             Ebnl=e(l)-e(n)+Eexc(be)
+             denomnl=Ebnl*Ebnl+gamma_b*gamma_b
+
+!=========================================================
+!=========================================================
+!         the Theta_j part
+!=========================================================
+!  indices of exciton gamma or c
+             j=ce(qq,ii)
+             i=ch(qq,ii)
+
+             psic=psi(qq,ii)
+
+             psicc_b=conjg(psic)*psib
+             psicccb=conjg(psic)*conjg(psib)
+             
+           do k = nLU,nLU+du
+!---------------------------------------------------------
+               
+             jae=ccc(ae,k,i)
+
+             if (jae.ne.0) then
+!>>>>>>>>>>>>>>>>>>>>>>><<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+!>>>>>>>>>>>>>>>>>>>>>>><<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+             psia=psi(ae,jae)
+            
+             Eaeki=Eexc(ae)+e(k)-e(i)
+             denom1=Eaeki*Eaeki+gamma_b*gamma_b
+            
+             Ejiw=e(j)-e(i)+w
+             denom2=Ejiw*Ejiw+gamma_b*gamma_b
+
+!         the Theta_l Theta_{-n} part            
+             PV=Eaeki*Ejiw*Ebln/(denom1*denom2*denomln)
+
+!   find the Theta_l Theta_{-n} VC matrix element
+             jj=cveeh(j-nLU+1,l-nLU+1,n-(nHO-ddo)+1,k-nLU+1)
+            
+      f=(Eexc(ae)-e(k)+e(i))*(e(l)-e(n)-Eexc(be))*(e(j)-e(i)-Eexc(qq))
+
+           Rh=Rh+VCeeh(jj)*PV*f*psia*psicccb!psia*conjg(psic)*conjg(psib)
+
+! the Theta_{-l} Theta_{n} part
+             PV=Eaeki*Ejiw*Ebnl/(denom1*denom2*denomnl)
+
+!   find the Theta_{-l} Theta_{n} VC matrix element
+!     NOTE use V(e2,h,e,e1)=V(e1,e,h,e2)^*
+             jj=cveeh(k-nLU+1,l-nLU+1,n-(nHO-ddo)+1,j-nLU+1)
+!            jj=cvehe(j-nLU+1,n-(nHO-ddo)+1,l-nLU+1,k-nLU+1)
+            
+!      f=(Eexc(ae)-e(k)+e(i))*(e(l)-e(n)-Eexc(be))*(e(j)-e(i)-Eexc(qq))
+
+           Rh=Rh+conjg(VCeeh(jj))*PV*f*psia*psicc_b!psia*conjg(psic)*psib
+!>>>>>>>>>>>>>>>>>>>>>>><<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+!>>>>>>>>>>>>>>>>>>>>>>><<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+            end if
+!---------------------------------------------------------	      
+	   end do! end k loop
+!=========================================================
+!=========================================================
+!         end of the Theta_j part
+!=========================================================
+
+!=========================================================
+!         the Theta_-j part
+!=========================================================
+!  indices of exciton gamma or c
+             i=ce(qq,ii)
+             j=ch(qq,ii)
+
+             psic=psi(qq,ii)
+
+             psicb=psic*psib
+             psic_cb=psic*conjg(psib)
+
+           do k = nHO-ddo,nHO
+!---------------------------------------------------------  
+             jae=ccc(ae,i,k)
+
+             if (jae.ne.0) then
+!>>>>>>>>>>>>>>>>>>>>>>><<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+!>>>>>>>>>>>>>>>>>>>>>>><<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+             psia=psi(ae,jae)
+                         
+             Eaeki=Eexc(ae)-e(i)+e(k)
+             denom1=Eaeki*Eaeki+gamma_b*gamma_b
+            
+             Ejiw=e(i)-e(j)-w
+             denom2=Ejiw*Ejiw+gamma_b*gamma_b
+
+!         the Theta_l Theta_{-n} part
+            
+             PV=Eaeki*Ejiw*Ebln/(denom1*denom2*denomln)
+
+!   find the Theta_l Theta_{-n} VC matrix element
+           jj=cvheh(j-(nHO-ddo)+1,l-nLU+1,n-(nHO-ddo)+1,k-(nHO-ddo)+1)
+            
+             f=(Eexc(ae)-e(i)+e(k))*(e(l)-e(n)-Eexc(be))*(e(i)-e(j)-w)
+             
+       Rh=Rh+VCheh(jj)*PV*f*conjg(psia)*psic_cb!conjg(psia)*psic*conjg(psib)
+
+! the Theta_{-l} Theta_{n} part
+             PV=Eaeki*Ejiw*Ebnl/(denom1*denom2*denomnl)
+
+!   find the Theta_{-l} Theta_{n} VC matrix element
+!   NOTE use V(h2,h,e,h1)=V(h1,e,h,h2)^*
+         jj=cvheh(k-(nHO-ddo)+1,l-nLU+1,n-(nHO-ddo)+1,j-(nHO-ddo)+1)
+!        jj=cvhhe(j-(nHO-ddo)+1,n-(nHO-ddo)+1,l-nLU+1,k-(nHO-ddo)+1)
+            
+!       f=(Eexc(ae)-e(i)+e(k))*(e(l)-e(n)-Eexc(be))*(e(i)-e(j)-w)
+
+       Rh=Rh+conjg(VCheh(jj))*PV*f*conjg(psia)*psicb!conjg(psia)*psic*psib
+!>>>>>>>>>>>>>>>>>>>>>>><<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+!>>>>>>>>>>>>>>>>>>>>>>><<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+            end if
+!---------------------------------------------------------	      
+	   end do !end k loop
+      
+!=========================================================
+!=========================================================
+!         end of the Theta_-j part
+!=========================================================
+
+!///////////////////////////////////////////////////////////	      
+	        end do !end of kk loop: b exciton index loop
+!\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\	      
+	       end do !end of ii loop: c or qq or gamma exciton index loop 
+! if delta(w-Ea-Eb) is big enough there is a contribution to R2
+!dimension factor to be added in .nb
+         RRh=RRh+conjg(Rh)*Rh*deltaexc
+!         write(423,*)'{',qq,',',ae,',',be,',',conjg(Rh)*Rh,'},'
+	  !NOTE: change REALPART -> REAL
+          write(423,*)qq,ae,be,REAL(conjg(Rh)*Rh)
+!>>>>>>>>>>>>>>>>>>>>>>>>>>>>>><<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<< 
+         end if
+!--------------------------------------------------------------------------------
+          end do! end of be exciton state sum 
+          write(*,*)ae,deltaexc,RRh
+!--------------------------------------------------------------------------------
+          end do! end of ae exciton state sum

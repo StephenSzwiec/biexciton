@@ -1,0 +1,164 @@
+!----BOTTOM SECTION--------!
+
+
+!$OMP END SECTIONS
+
+
+
+!$OMP END PARALLEL
+
+
+!        write(423,*)w,R2
+         write(*,*)qq,w,RRh
+         write(425,*)'{',qq,',',w,',',RRh,'},'
+
+!         write(425,*)"}"
+
+         close(425)
+         close(423)
+
+         end
+!>>>>>>>>>>>>>>>>>>>>> END OF THE MAIN PROGRAM <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+
+
+!******************************************************************************
+	SUBROUTINE find_r_dipmom(a1,b1,c1,emax,npw,XX,YY,ZZ,gx,gy,gz)
+!******************************************************************************	
+        implicit none
+
+        real(8)     gx, gy, gz, gcut, twopi, gg          ! progections of k-vector in k-space
+        real(8)     ggx(-300:300),ggy(-300:300),ggz(-300:300)
+        real(8)     a1, b1, c1                           ! unit-vectors of the cell
+        real(8)     emax
+
+        integer     npw                                  ! max number of plane waves
+        integer     ixmax, iymax, izmax, nnnn,n5 
+        integer     ix(-300:300), ixy(-300:300,-300:300)
+        integer     izy(-300:300,-300:300),iz(-300:300) 
+
+        integer     i,j,k,i1,j1,k1
+        integer     X,Y,Z
+
+	integer     XX(npw),YY(npw),ZZ(npw)
+
+!         integer     XX(100000),YY(100000),ZZ(100000)
+
+!	integer, allocatable :: YY(npw)
+!	integer, allocatable :: ZZ(npw)
+
+!---------------------- beging the subroutine ---------------------------------------
+              write(*,*) 'subroutine find_r_dipmom'
+                write(*,*) 'npw=',npw
+
+c           twopi = 2.0 * 3.1415926
+	twopi=2D0*4D0*DATAN(1D0)
+
+!       write(*,*) 'twopi=', twopi
+
+           gx=twopi/a1
+           gy=twopi/b1
+           gz=twopi/c1
+        !   gcut = sqrt(2.0*emax/27.2116)   !in atomic units (Hartree)
+            gcut = dsqrt(emax/13.605826)/0.529177249  
+!----find maximum of absolute values of vector r:
+           ixmax = INT(gcut/gx)
+           iymax = INT(gcut/gy)
+           izmax = INT(gcut/gz)
+
+         write(*,*) 'xmax, ymax, zmax, nnnn = ', ixmax, iymax, izmax, 
+     c                                          nnnn
+!----find x, y, z of the vector r (r on sphere) 
+           nnnn = 0
+         do i1 = 1, 2*izmax+1              ! z=0,1,...,Zmax,-Zmax,...-1
+            if(i1.le.izmax+1) then
+               i = i1-1         
+            else
+               i = i1-2*(izmax+1)
+            endif
+              ggz(i1)= gz * i 
+              iz(i1) = 0
+            do j1 = 1, 2*iymax+1           ! y=0,1,...,Ymax,-Ymax,...-1
+               if(j1.le.iymax+1) then
+                  j = j1-1         
+               else
+                  j = j1-2*(iymax+1)
+               endif
+                ggy(j1)= gy * j
+                izy(i1,j1) = 0 
+               do k1 = 1, 2*ixmax+1
+                  if(k1.le.ixmax+1) then   ! x=0,1,...,Xmax,-Xmax,...-1
+                     k = k1-1         
+                  else
+                     k = k1-2*(ixmax+1)
+                  endif
+                   ggx(k1)= gx * k 
+                   gg = sqrt(ggx(k1)**2 + ggy(j1)**2 + ggz(i1)**2)
+                  if (gg.le.gcut) then
+                     if(k.gt.izy(i1,j1)) izy(i1,j1) = k
+                     if(j.gt.iz(i1)) iz(i1) = j
+                     nnnn = nnnn + 1
+                  endif
+               enddo
+            enddo
+          enddo
+
+        write(*,*) 'xmax, ymax, zmax, nnnn = ', ixmax, iymax, izmax, 
+     c                                          nnnn
+
+!	    allocate(XX(npw))
+!	    allocate(YY(npw))
+!	    allocate(ZZ(npw))
+
+             n5=0
+!            n6=0
+!            n7=0
+
+
+
+        do i1 = 1, 2*izmax+1
+            if(i1.le.izmax+1) then
+               i = i1-1         
+            else
+               i = i1-2*(izmax+1)
+            endif
+            
+               do j1 = 1, 2*iymax+1
+               if(j1.le.iymax+1) then
+                  j = j1-1         
+               else
+                  j = j1-2*(iymax+1)
+               endif
+
+               if(abs(j).le.iz(i1)) then
+
+                  do k1 = 1, 2*ixmax+1
+                      if(k1.le.ixmax+1) then
+                          k = k1-1         
+                      else
+                          k = k1-2*(ixmax+1)
+                      endif
+                      if(abs(k).le.izy(i1,j1)) then
+                            n5=n5+1
+                         Z=i
+                         ZZ(n5)=Z
+                         Y= j
+                         YY(n5)=Y
+                         X= k
+                         XX(n5)=X
+                       if(n5.GT.npw) write(*,*) 'n5',n5,'npw',npw
+                      endif
+c                       if(n5.GT.npw) write(*,*) 'n5',n5,'npw',npw
+                   enddo !k1
+                endif  
+             enddo !j1
+         enddo !i1
+         write(*,*) 'dimension of nubla n5 = ', n5
+
+    !      do i = 1,300
+    !       write(*,*) 'i=',i,' kx=',XX(i),' ky=',YY(i),' kz=',ZZ(i)
+    !      enddo
+    
+   !  write(*,*) 'return from subroutine find_r_dipmom' 
+        Return
+       END
+!>>>>>>>>>>>>>>> END OF SUBROUTINE find_r_dipmo <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<

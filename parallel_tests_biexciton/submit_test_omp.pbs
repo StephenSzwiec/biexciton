@@ -1,0 +1,13 @@
+#!/bin/bash
+#PBS -q preemptible
+#PBS -N R_omp_CdOopt
+#PBS -l select=1:mem=10gb:ncpus=5:ompthreads=5:plist=milan
+#PBS -l walltime=3:10:00
+#PBS -W group_list=x-ccast-prj-{}
+
+cd $PBS_O_WORKDIR
+
+module load compiler/2023.0.0
+#ifx tile_OMP_enRead.f -o x -qopenmp
+
+./x > output_test
