@@ -522,6 +522,7 @@ contains
         
         integer :: ios
         integer :: i, j, k, n_comp, current_k
+        integer :: idx, max_comp
         real(8) :: real_part, imag_part
         logical :: is_reading 
         
@@ -562,9 +563,9 @@ contains
             else if (is_reading) then
                 ! Read quartet
                 j = k
-                read(104, *, iostat=ios) i, re_psi, im_psi
+                read(104, *, iostat=ios) i, real_part, imag_part
                 if (ios /= 0) then
-                    print *, 'ERROR: Incomplete quartet'
+                    print *, 'ERROR: Incomplete quartet', current_k
                     stop 1
                 end if
                 ! Grow temp_data if needed
@@ -768,24 +769,219 @@ module mod_biexciton
     use mod_coulomb 
     implicit none 
 
+    type :: results 
+        real(8) :: total_rate ! total biexciton recombination rate 
+        real(8), allocatable :: matrix_elements(:,:,:) ! (qq, ae, be) 
+        integer :: n_calculated 
+    end type results 
+
 contains 
-    subroutine compute_transition_amplitude(qq, ae, be, & 
+    function lorentzian_delta(dE, gamma_b) result(deltaexc)
+        implicit none 
+        real(8), intent(in) :: dE, gamma_b 
+        real(8) :: deltaexc 
+
+        deltaexc = gamma_b / energy_denominator(dE, gamma_b) 
+    end function lorentzian_delta
+
+    function energy_denominator(E, gamma_b) result(denom)
+        implicit none 
+        real(8), intent(in) :: E, gamma_b 
+        complex(8) :: denom 
+
+        denom = E*E + gamma_b*gamma_b
+    end function energy_denominator
+
+    function principal_value(E1, E2, E3, gamma_b) result(pv)
+        implicit none 
+        real(8), intent(in) :: E1, E2, E3, gamma_b 
+        complex(8) :: pv 
+
+
+        pv = (E1 * E2 * E3) / (energy_denominator(E1, gamma_b) * &
+                               energy_denominator(E2, gamma_b) * &
+                               energy_denominator(E3, gamma_b))
+    end function principal_value
+
+    subroutine compute_transition_amplitude(qq, ae, be, &
             exc_basis, V_ee, V_hh, &
-            energy_bands, gamma_b, ss, & 
-            Rh, deltaexc) 
-    end subroutine compute_transition_amplitude
+            energy_bands, nLU, nHO, du, ddo, &
+            gamma_b, Rh) 
+        implicit none 
+        integer, intent(in) :: qq, ae, be 
+        type(exciton_basis), intent(in) :: exc_basis 
+        type(columb_matrix), intent(in) :: V_ee, V_hh 
+        real(8), intent(in) :: energy_bands(:) ! band energies
+        integer, intent(in) :: nLU, nHO, du, ddo 
+        real(8), intent(in) :: gamma_b 
+        complex(8), intent(out) :: Rh 
 
-    subroutine theta_j()
-        ! Heaviside step function theta_j for electron spectator term
-    end subroutine theta_j
+        integer :: i, j, k, l, n, ii, jj, kk, jae 
+        complex(8) :: psia, psib, psic 
+        ! these names are terrible so I am renaming them but they were originally:
+        ! complex(8) :: psicc_b, psicccb, psicb, psic_cb 
+        complex(8) :: rho_cc_b, rho_cc_cb, rho_ 
+        real(8) :: Eaeki, Ejiw, Ebln, Ebnl 
+        real(8) :: pv, f 
+        complex(4) :: V_elem 
+        
+        Rh = cmplx(0.0d0, 0.0d0, kind=8) 
 
-    subroutine theta_minus_j()
-        ! Heaviside step function theta_-j for hole spectator term 
-    end subroutine theta_minus_j
+        do ii = 1, exc_basis%n_components(qq)
+            do kk 1, exc_basis%n_components(be)
+                ! get band indices for exciton be 
+                l = exc_basis%e_idx(be, kk) ! electron band 
+                n = exc_basis%h_idx(be, kk) ! hole band 
+                psib = cmplx(exc_basis%psi(be, kk), kind=8) ! exciton be component 
+                ! energy denominators for Theta_l Theta_{-n} and Theta_{-l} Theta_n parts 
+                Ebln = energy_bands(l) - energy_bands(n) - (exc_basis%exc(be))
+                Ebnl = energy_bands(n) - energy_bands(l) + (exc_basis%exc(be))
+                ! get band indices for initial exciton qq 
+                j = exc_basis%e_idx(qq, ii) ! electron band 
+                i = exc_basis%h_idx(qq, ii) ! hole band 
+                psic = cmplx(exc_basis%psi(qq, ii), kind=8) ! exciton qq component 
+                ! precompute common products (rho terms)  
+                rho_cc_b = conjg(psic) * psib 
+                rho_cc_cb = conjg(psic) * conjg(psib)
+                rho_c_b = psic * psib 
+                rho_c_cb = psic * conjg(psib)
+                ! === Electron Spectator Term (Theta_j part) ===
+                do k = nLU, nLU + du ! Intermediate electron states 
+                    ! check if (ae, k, i) exists in exciton ae 
+                    jae = exc_basis%index_map(ae, k, i)
+                    if (jae > 0) then 
+                        psia = cmplx(exc_basis%psi(ae, jae), kind=8) 
+                        ! energy terms 
+                        Eaeki = energy_bands(ae) + energy_bands(k) - energy_bands(i)
+                        Ejiw = energy_bands(j) - energy_bands(i) + exc_basis%exc(qq)
+                        
+                        ! Theta_l Theta_{-n} contribution 
+                        pv = principal_value(Eaeki, Ejiw, Ebln, gamma_b)
+                        jj = V_ee%index_map(j, l, n, k)
+                        if (jj > 0) then 
+                            V_elem = V_ee%V(jj)
+                            f = (exc_basis%exc(ae) - energy_bands(k) + energy_bands(i)) * &
+                                (energy_bands(l) - energy_bands(n) - exc_basis%exc(be)) * &
+                                (energy_bands(j) - energy_bands(i) + exc_basis%exc(qq))
+                            Rh = Rh + cmplx(V_elem, kind=8) * pv * f * psia * rho_cc_cb 
+                        end if
 
-    function energy_denominator(E1, E2, gamma_b) result(denom)
-        ! Lorentzian energy denominator: gamma/(dE^2 + gamma^2) 
-    end function energy_denominator 
+                        ! Theta_{-l} Theta_n contribution 
+                        pv = principal_value(Eaeki, Ejiw, Ebnl, gamma_b) 
+                        jj = V_ee%index_map(k, l, n, j) ! Hermiticity w00t 
+                        if (jj > 0) then 
+                            V_elem = V_ee%V(jj)
+                            Rh = Rh + conjg(complx(V_elem, kind=8)) * pv * f * psia * rho_cc_b
+                        end if
+                    end if
+                end do ! k intermediate electron states
+                ! === Hole Spectator Term (Theta_{-i} part) ===
+                ! swap indices for hole spectator 
+                i = exc_basis%e_idx(qq, ii) ! electron band becomes hole band 
+                j = exc_basis%h_idx(qq, ii) ! hole band becomes electron band 
+                do k = nHO - ddo, nHO ! Intermediate hole states 
+                    ! check if (ae, i, k) exists in exciton ae 
+                    jae = exc_basis%index_map(ae, i, k)
+                    if (jae > 0) then 
+                        psia = cmplx(exc_basis%psi(ae, jae), kind=8)
+                        ! energy terms
+                        Eaeki = energy_bands(ae) - energy_bands(i) + energy_bands(k)
+                        Ejiw = energy_bands(i) - energy_bands(j) + exc_basis%exc(qq)
+                        ! Theta_l Theta_{-n} contribution 
+                        pv = principal_value(Eaeki, Ejiw, Ebln, gamma_b) 
+                        jj = V_hh%index_map(j, l, n, k)
+                        if (jj > 0) then 
+                            V_elem = V_hh%V(jj)
+                            f = (exc_basis%exc(ae) - energy_bands(i) + energy_bands(k)) * &
+                                (energy_bands(l) - energy_bands(n) - exc_basis%exc(be)) * &
+                                (energy_bands(i) - energy_bands(j) - exc_basis%exc(qq))
+                            Rh = Rh + cmplx(V_elem, kind=8) * pv * f * conjg(psia) * rho_c_cb 
+                        end if
+                        ! Theta_{-l} Theta_n contribution 
+                        pv = principal_value(Eaeki, Ejiw, Ebnl, gamma_b)
+                        jj = V_hh%index_map(k, l, n, j) ! Hermiticity 
+                        if (jj > 0) then 
+                            V_elem = V_hh%V(jj)
+                            Rh = Rh + conjg(cmplx(V_elem, kind=8)) * pv * f * conjg(psia) * rho_c_b
+                        end if 
+                    end if
+                end do ! k intermediate hole states
+            end do ! kk exciton be components 
+        end do ! ii exciton qq components
+    end subroutine compute_transition_amplitude 
+
+    subroutine parallel_biexciton_loop(ranges, params, exc_basis, V_ee, V_hh, &
+            energy_bands, results)
+        ! parallel loop driver 
+        use omp_lib
+        use mod_config 
+        implicit none 
+        integer, intent(in) :: ranges(:,:) ! (nthreads, 2) start/end indices 
+        type(biexciton_params), intent(in) :: params  
+        type(exciton_basis), intent(in) :: exc_basis 
+        type(columb_matrix), intent(in) :: V_ee, V_hh 
+        real(8), intent(in) :: energy_bands(:) 
+        type(results), intent(out) :: results 
+
+        integer :: nthreads, tid, i 
+        integer :: ae_start, ae_end, ae, be 
+        real(8) :: w, dE, deltaexc, delta_threshold 
+        complex(8) :: Rh 
+        real(8), allocatable :: thread_rates(:) 
+        real(8), allocatable :: thread_matrix(:,:,:) 
+        integer :: n_calculated 
+
+        nthreads = size(ranges, 1) 
+        allocate(thread_rates(nthreads)) 
+        allocate(thread_matrix(nthreads, params%qq, params%qq))
+        thread_rates = 0.0d0 
+        thread_matrix = 0.0d0 
+        w = exc_basis%exc(params%qq) ! biexciton energy 
+        delta_threshold = 1.0d0 / (params%gamma_b * params%ss) ! we finally use this scaling factor 
+
+        !$OMP PARALLEL PRIVATE(tid, ae_start, ae_end, ae, be, dE, deltaexc, Rh, n_calculated) &
+        !$OMP& SHARED(ranges, params, exc_basis, V_ee, V_hh, energy_bands, thread_rates, thread_matrix)
+        tid = omp_get_thread_num() + 1 
+        ae_start = ranges(tid, 1) 
+        ae_end = ranges(tid, 2) 
+        n_calculated = 0 
+
+        !$OMP DO SCHEDULE(dynamic) 
+        do ae = ae_start, ae_end 
+            do be = 1, params%qq 
+                ! Energy conservation 
+                dE = w - exc_basis%exc(ae) - exc_basis%exc(be) 
+                deltaexc = lorentzian_delta(dE, params%gamma_b) 
+                if (deltaexc > delta_threshold) then 
+                    call compute_transition_amplitude(params%qq, ae, be, &
+                        exc_basis, V_ee, V_hh, &
+                        energy_bands, params%nLU, params%nHO, params%du, params%ddo, &
+                        params%gamma_b, Rh)
+                    thread_rates(tid) = thread_rates(tid) + real(conjg(Rh) * Rh, kind=8) * deltaexc
+                    thread_matrix(tid, ae, be) = real(conjg(Rh) * Rh, kind=8) 
+                    n_calculated = n_calculated + 1 
+                end if
+            end do 
+        end do 
+        !$OMP END DO 
+        !$OMP CRITICAL 
+            print *, "Thread ", tid, " completed. Processed exciton pairs: ", n_calculated
+        !$OMP END CRITICAL
+        !$OMP END PARALLEL 
+
+        ! Aggregate results 
+        results%total_rate = sum(thread_rates) 
+        results%n_calculated = n_calculated 
+        ! combine matrix elements 
+        allocate(results%matrix_elements(params%qq, params%qq))
+        results%matrix_elements = 0.0d0 
+        do i = 1, nthreads
+            where (thread_matrix(i,:,:) > 0.0d0)
+                results%matrix_elements = results%matrix_elements + thread_matrix(i,:,:)
+            end where
+        end do
+        deallocate(thread_rates, thread_matrix)
+    end subroutine parallel_biexciton_loop
 
 end module mod_biexciton
 
@@ -840,13 +1036,80 @@ contains
         end do 
     end subroutine compute_load_balance 
 
-    subroutine parallel_biexciton_loop()
-        ! wrapper for OMP section
-    end subroutine parallel_biexciton_loop
-
 end module mod_parallel
 
 module mod_output
+    implicit none 
+
+    type :: timing_info 
+        real(8) :: total_time 
+        real(8) :: wavecar_time 
+        real(8) :: exciton_time 
+        real(8) :: coulomb_time 
+        real(8) :: biexciton_time 
+    end type timing_info
+
+contains 
+
+    subroutine write_results(params, results, exc_basis)
+        use mod_config 
+        use mod_exciton
+        implicit none 
+        type(biexciton_params), intent(in) :: params 
+        type(results), intent(in) :: results 
+        type(exciton_basis), intent(in) :: exc_basis 
+        character(len=256) :: filename 
+        integer :: ae, be 
+
+        filename = trim(params%output_prefix) // 'total_rate.txt'
+        open(unit=200, file=trim(filename), status='replace', action='write')
+        write(200, '(A,I6)') '# Initial exciton index (qq): ', params%qq
+        write(200, '(A,F12.6)') '# Initial exciton energy (eV): ', exc_basis%exc(params%qq)
+        write(200, '(A,F16.8)') '# Total biexciton recombination rate: ', results%total_rate
+        write(200, '(A,I8)') '# Number of calculated exciton pairs: ', results%n_calculated
+        write(200, '(A)') '# qq, energy, rate'
+        write(200, '(I6,2F16.8)') params%qq, exc_basis%exc(params%qq), results%total_rate 
+        close(200)
+
+        filename = trim(params%output_prefix) // 'matrix_elements.txt' 
+        open(unit=201, file=trim(filename), status='replace', action='write')
+        write(201, '(A)') '# Biexciton matrix elements |Rh|^2'
+        write(201, '(A)') '# qq, ae , be,  |Rh|^2'
+        do ae = 1, params%qq 
+            do be = 1, params%qq 
+                if (results%matrix_elements(ae, be) > 0.0d0) then 
+                    write(201, '(3I8,F16.8)') params%qq, ae, be, results%matrix_elements(ae, be)
+                end if
+            end do 
+        end do
+        close(201)
+        print *, 'Results written to files with prefix: ', trim(params%output_prefix)
+        print *, 'Total biexciton rate: ', results%total_rate 
+        print *, 'Matrix elements for ', results%n_calculated, ' exciton pairs computed.'
+    end subroutine write_results
+
+    subroutine write_summary(params, timing)
+        use mod_config 
+        implicit none 
+        type(biexciton_params), intent(in) :: params 
+        
+        character(len=256) :: filename 
+        filename = trim(params%output_prefix) // 'summary.txt'
+        open(unit=202, file=trim(filename), status='replace', action='write')
+        write(202, '(A)') 'Biexciton Recombination Calculation Summary'
+        write(202, '(A,I6)') 'Initial exciton index (qq): ', params%qq
+        write(202, '(A,I6)') 'Number of active bands: ', params%nbandmax - params%nbandmin + 1
+        write(202, '(A,I6)') 'Number of exciton states: ', params%nexc 
+        write(202, '(A,I6)') 'OpenMP threads used: ', params%omp_threads
+        write(202, '(A,F8.2)') 'Total computation time (s): ', timing%total_time
+        write(202, '(A,F8.2)') 'Time reading WAVECAR (s): ', timing%wavecar_time
+        write(202, '(A,F8.2)') 'Time reading exciton data (s): ', timing%exciton_time
+        write(202, '(A,F8.2)') 'Time reading Coulomb matrices (s): ', timing%coulomb_time
+        write(202, '(A,F8.2)') 'Time in biexciton computation (s): ', timing%biexciton_time
+        close(202)
+        print *, 'Summary written to file: ', trim(filename)
+    end subroutine write_summary
+
 end module mod_output
 
 program biexciton_calculation
@@ -864,44 +1127,68 @@ program biexciton_calculation
     type(exciton_basis) :: excitons 
     type(columb_matrix) :: V_ee, V_hh 
     type(kpoint_data) :: kdata
+    type(results) :: results 
+    type(timing_info) :: timing 
     complex(8), allocatable :: active_coefs(:,:) ! (nband_active, npw) 
+    real(8), allocatable :: energy_bands(:) ! (nband_active) 
     real(8), allocatable :: overlaps(:) ! (nband_active) 
-    real(8) :: egap ! band gap (eV) 
-
+    integer, allocatable :: ranges(:,:) ! (nthreads, 2) start/end indices 
+    real(8) :: egap, start_time, end_time, wavecar_time, exciton_time, coulomb_time, biexciton_time 
+    integer :: i 
 
     ! 1. Configuration and initialization 
+    call cpu_time(start_time) 
     call parse_commandline(params) 
-
+    print *, 'Biexciton recombination calculation started.' 
     ! 2. Read WAVECAR 
-    call read_wavecar(params%wavecar_file, wavecar, kdata) 
+    call cpu_time(wavecar_time) 
+    call read_wavecar(params%wavecar_file, wavecar, kdata)
+    call cpu_time(end_time)
+    timing%wavecar_time = end_time - wavecar_time
+    print *, 'WAVECAR read successfully. Number of k-points: ', size(kdata)
     ! gamma point only for now 
     call compute_ho_lu_indices(kdata(1), wavecar%efermi, params%nHO, params%nLU, egap) 
     params%nbandmin = params%nLU - params%du 
     params%nbandmax = params%nHO + params%ddo 
+    allocate(energy_bands(params%nbandmin:params%nbandmax))
+    do i = params%nbandmin, params%nbandmax 
+        energy_bands(i) = kdata(1)%band_energies(i)
+    end do 
     call extract_active_bands(kdata(1), params%nbandmin, params%nbandmax, &
                               active_coefs, overlaps)
     call free_kpoint_data(kdata)
 
     ! 3. Read exciton data 
+    call cpu_time(exciton_time)
     call read_exciton_energies(params%exciton_energy_file, excitons)
     call read_exciton_wavefunctions(params%exciton_wf_file, excitons, excitons%nexc)
     call build_index_map(excitions, params%nLU, params%du, params%nHO, params%ddo)
-    
+    call cpu_time(end_time)
+    timing%exciton_time = end_time - exciton_time
+    print *, 'Exciton data read successfully. Number of exciton states: ', excitons%nexc 
     ! 4. Read Coulomb matrices 
-    call read_coulomb_matrix(params%V_ee_file, V_ee)
-    call read_coulomb_matrix(params%V_hh_file, V_hh)
-
+    call cpu_time(coulomb_time)
+    call read_coulomb_matrix(params%V_ee_file, V_ee, &
+        params%nLU, params%nHO, params%du, params%ddo, 'eeeh')
+    call read_coulomb_matrix(params%V_hh_file, V_hh, &
+        params%nLU, params%nHO, params%du, params%ddo, 'hheh')
+    call cpu_time(end_time)
+    timing%coulomb_time = end_time - coulomb_time
     ! 5. Setup parallel environment  
+    call cpu_time(biexciton_time)
     call setup_omp(params%omp_threads) 
     call compute_load_balance(params%qq, params%omp_threads, ranges)
-
     ! 6. Compute biexciton recombination rate 
     call parallel_biexciton_loop(ranges, params, excitons, V_ee, V_hh, results)
-
+    call cpu_time(end_time)
+    timing%biexciton_time = end_time - biexciton_time
     ! 7. Output results 
     call write_results(params, results)
+    call cpu_time(end_time) 
+    timing%total_time = end_time - start_time 
     call write_summary(params, timing)
-
-    ! Finalize
-    call finalize_parallel()
+    ! Cleanup 
+    call free_exciton_basis(excitions) 
+    deallocate(energy_bands)
+    print *, 'Biexciton recombination calculation completed.' 
 end program biexciton_calculation
