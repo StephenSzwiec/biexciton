@@ -820,7 +820,7 @@ contains
         complex(8) :: psia, psib, psic 
         ! these names are terrible so I am renaming them but they were originally:
         ! complex(8) :: psicc_b, psicccb, psicb, psic_cb 
-        complex(8) :: rho_cc_b, rho_cc_cb, rho_ 
+        complex(8) :: rho_cc_b, rho_cc_cb, rho_c_b, rho_c_cb
         real(8) :: Eaeki, Ejiw, Ebln, Ebnl 
         real(8) :: pv, f 
         complex(4) :: V_elem 
