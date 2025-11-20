@@ -14,7 +14,7 @@
 ! delta(...) is a broadened delta function enforcing energy conservation 
 ! 
 ! This includes both the electron and hole channel contributions to Rh using 
-! spectator hole states (Tamm-Dancoff approximation ?) and applies a 
+! spectator hole states (Kadanoff–Baym–Keldysh formalism) and applies a 
 ! Lorentzian broadening scheme to the delta function to account for 
 ! finite lifetimes of the states using two broadening parameters:
 !   - gamma_b : broadening of exciton states
@@ -84,7 +84,7 @@ contains
         character(len=*), intent(in) :: filename
         type(biexciton_params), intent(inout) :: params 
         integer :: ios 
-        character(len=256) :: line, key, val 
+        character(len=256) :: line, key, val, buf 
         open(unit=101, file=trim(filename), status='old', action='read', iostat=ios)
         if (ios /= 0) then
     print *, 'Error: Unable to open config file: ', trim(filename)
@@ -94,21 +94,27 @@ contains
             read(101, '(A)', iostat=ios) line
             if (ios /= 0) exit 
             if (trim(line) == '' .or. line(1:1) == '#') cycle ! skip blank lines/comments
-            read(line, '(A,A)', iostat=ios) key, val
+            read(line, '(A,A)', iostat=ios) key, buf
             if (ios /= 0) cycle 
             select case (trim(adjustl(key)))
             case ('ddo')
-                read(trim(adjustl(val)), *) params%ddo
+                val = trim(adjustl(buf))
+                read(val, *) params%ddo
             case ('du')
-                read(trim(adjustl(val)), *) params%du
+                val = trim(adjustl(buf))
+                read(val, *) params%du
             case ('qq')
-                read(trim(adjustl(val)), *) params%qq
+                val = trim(adjustl(buf))
+                read(val, *) params%qq
             case ('gamma_b')
-                read(trim(adjustl(val)), *) params%gamma_b
+                val = trim(adjustl(buf))
+                read(val, *) params%gamma_b
             case ('ss')
-                read(trim(adjustl(val)), *) params%ss
+                val = trim(adjustl(buf))
+                read(val, *) params%ss
             case ('omp_threads')
-                read(trim(adjustl(val)), *) params%omp_threads
+                val = trim(adjustl(buf))
+                read(val, *) params%omp_threads
             end select
         end do
         close(101)
