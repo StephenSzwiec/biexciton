@@ -181,12 +181,12 @@ contains
         end do 
 
         ! evaluate what we now have, and if that makes sense
-        if (.not.allocated(params%wavecar_file)) params%wavecar_file = 'WAVECAR' 
-        if (.not.allocated(params%exciton_energy_file)) params%exciton_energy_file = 'exeC'
-        if (.not.allocated(params%exciton_wf_file)) params%exciton_wf_file = 'excwf_trunc'
-        if (.not.allocated(params%V_ee_file)) params%V_ee_file = 'VCe1ehe2'
-        if (.not.allocated(params%V_hh_file)) params%V_hh_file = 'VCh1ehh2'
-        if (.not.allocated(params%output_prefix)) params%output_prefix = 'biexciton_output_'
+        if (params%wavecar_file == '')) params%wavecar_file = 'WAVECAR' 
+        if (params%exciton_energy_file == '')) params%exciton_energy_file = 'exeC'
+        if (params%exciton_wf_file == '')) params%exciton_wf_file = 'excwf_trunc'
+        if (params%V_ee_file == '')) params%V_ee_file = 'VCe1ehe2'
+        if (params%V_hh_file == '')) params%V_hh_file = 'VCh1ehh2'
+        if (params%output_prefix == '')) params%output_prefix = 'biexciton_output'
         if (params%ddo <= 0) then
             print *, 'Error: ddo must be positive integer.'
             stop 
