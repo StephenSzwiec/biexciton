@@ -70,18 +70,18 @@ module mod_config
         ! omp parameter 
         integer :: omp_threads ! number of omp threads
         ! file paths 
-        character(len=:) :: wavecar_file 
-        character(len=:) :: exciton_energy_file 
-        character(len=:) :: exciton_wf_file 
-        character(len=:) :: V_ee_file
-        character(len=:) :: V_hh_file
+        character(len=:), allocatable :: wavecar_file 
+        character(len=:), allocatable :: exciton_energy_file 
+        character(len=:), allocatable :: exciton_wf_file 
+        character(len=:), allocatable :: V_ee_file
+        character(len=:), allocatable :: V_hh_file
         character(len=256) :: output_prefix
     end type biexciton_params
 
 contains 
     subroutine read_config(filename, params)
         implicit none 
-        character(len=*), intent(in) :: filename
+        character(len=:), allocatable, intent(in) :: filename
         type(biexciton_params), intent(inout) :: params 
         integer :: ios 
         character(len=256) :: line, key, val, buf 
@@ -123,8 +123,9 @@ contains
     subroutine parse_commandline(params)
         implicit none 
         type(biexciton_params), intent(out) :: params 
-        character(len=*) :: wavecar_file, exciton_energy_file 
-        character(len=*) :: exciton_wf_file, V_ee_file, V_hh_file
+        character(len=:), allocatable :: wavecar_file, exciton_energy_file 
+        character(len=:), allocatable :: exciton_wf_file, V_ee_file, V_hh_file
+        character(len=:), allocatable :: config_file
         integer :: iarg, nargs 
         character(len=256) :: arg, command_name, path_buf
         logical :: exists
@@ -158,7 +159,8 @@ contains
                 params%output_prefix = trim(path_buf)
             case ('-c', '--config')
                 call get_command_argument(iarg+1, path_buf)
-                call read_config(trim(path_buf), params) 
+                config_file = trim(path_buf)
+                call read_config(config_file, params)
             case ('--ddo')
                 call get_command_argument(iarg+1, arg)
                 read(arg, *) params%ddo
@@ -181,12 +183,12 @@ contains
         end do 
 
         ! evaluate what we now have, and if that makes sense
-        if (params%wavecar_file == '')) params%wavecar_file = 'WAVECAR' 
-        if (params%exciton_energy_file == '')) params%exciton_energy_file = 'exeC'
-        if (params%exciton_wf_file == '')) params%exciton_wf_file = 'excwf_trunc'
-        if (params%V_ee_file == '')) params%V_ee_file = 'VCe1ehe2'
-        if (params%V_hh_file == '')) params%V_hh_file = 'VCh1ehh2'
-        if (params%output_prefix == '')) params%output_prefix = 'biexciton_output'
+        if (params%wavecar_file == '') params%wavecar_file = 'WAVECAR' 
+        if (params%exciton_energy_file == '') params%exciton_energy_file = 'exeC'
+        if (params%exciton_wf_file == '') params%exciton_wf_file = 'excwf_trunc'
+        if (params%V_ee_file == '') params%V_ee_file = 'VCe1ehe2'
+        if (params%V_hh_file == '') params%V_hh_file = 'VCh1ehh2'
+        if (params%output_prefix == '') params%output_prefix = 'biexciton_output'
         if (params%ddo <= 0) then
             print *, 'Error: ddo must be positive integer.'
             stop 
@@ -207,7 +209,7 @@ contains
             print *, 'Error: ss must be positive integer.'
             stop 
         end if
-        if (.not.allocated(params%omp_threads)) then 
+        if (params%omp_threads == '' .or. params%omp_threads <= 0) then
             ! try OMP_NUM_THREADS env variable 
             call get_environment_variable('OMP_NUM_THREADS', arg, status=iarg)
             ! if neither set, default to 1 
@@ -288,14 +290,14 @@ module mod_wavecar
 contains 
     subroutine read_wavecar(filename, header, kdata)
         implicit none
-        character(len=*), intent(in) :: filename
+        character(len=:), allocatable, intent(in) :: filename
         type(wavecar_header), intent(out) :: header
         type(kpoint_data), intent(out) :: kdata 
         integer :: ios, unit
         real(8) :: recordlen, rispin, rtag, rnpw
         real(8) :: inkpt, inband, lattice(3,3)
         integer :: i, j 
-        real(8), allocatable :: gweight(:) ! not kept but read 
+        real(8), allocatable :: gweight(:,:) ! not kept but read 
         real(8), parameter :: occ_threshold = 0.5d0
 
         ! Read record length 
@@ -307,7 +309,7 @@ contains
         end if
         read(102, rec=1) recordlen, rispin, rtag
         close(102)
-        header%irecl = int(recordlen)
+        header%rl = int(recordlen)
         header%tag = int(rtag)
         ! Warn about precision
         !if (header%rtag /= 45200 .and. header%rtag /= 45210) then
@@ -315,7 +317,7 @@ contains
         !    print *, 'Expected 45200 (single) or 45210 (double)'
         !end if
         open(unit=102, file=trim(filename), form='unformatted', &
-             access='direct', recl=header%irecl, status='old', iostat=ios)
+             access='direct', recl=header%rl, status='old', iostat=ios)
         read(102, rec=2) inkpt, inband, header%emax, &
                           ((lattice(i,j), i=1,3), j=1,3), header%efermi
         ! Store metadata
@@ -331,7 +333,7 @@ contains
         allocate(gweight(header%nkpt, header%nband)) ! not used 
         ! read k-point data 
         read(102, rec=3) rnpw, (kdata%kpt(i), i=1,3), &
-                                  (kdata%eig(j),gweight(j),kdata%occ(j),&
+                                  (kdata%eig(j),gweight(1,j),kdata%occ(j),&
                                   j=1,header%nband)
         header%npw = int(rnpw)
         allocate(kdata%coef(header%nband, header%npw))
@@ -349,9 +351,9 @@ contains
         print *, '  Fermi energy (eV): ', header%efermi
         print *, '  Number of plane-waves: ', header%npw
         print *, '  Lattice parameters (Angstrom):'
-        print *, '    a1: ', trim(header%a1), ' Å '
-        print *, '    b1: ', trim(header%b1), ' Å '
-        print *, '    c1: ', trim(header%c1), ' Å '
+        print *, '    a1: ', header%a1, ' Å '
+        print *, '    b1: ', header%b1, ' Å '
+        print *, '    c1: ', header%c1, ' Å '
     end subroutine read_wavecar
 
     subroutine extract_active_bands(kdata, nbandmin, nbandmax, ac, overlaps)
@@ -359,7 +361,7 @@ contains
         type(kpoint_data), intent(in) :: kdata 
         integer, intent(in) :: nbandmin, nbandmax 
         complex(8), allocatable, intent(out) :: ac(:,:) ! (nbandmax-nbandmin+1, npw)
-        real(8), optional, intent(out) :: overlaps(:) ! (nbandmax-nbandmin+1) 
+        real(8), allocatable, optional, intent(out) :: overlaps(:) ! (nbandmax-nbandmin+1) 
         integer :: npw, nactive, iband, ic, i 
         real(8) :: overlap 
 
@@ -392,8 +394,8 @@ contains
         integer, intent(out) :: nlu        ! lowest unoccupied band 
         real(8), intent(out) :: egap ! band gap 
         real(8), optional, intent(in) :: tolerance ! energy tolerance
-        integer :: nband, iband 
-        real(8) :: tol, E_ho, E_lu 
+        integer :: nband, iband, i, ho_check, n_degen
+        real(8) :: tol, E_ho, E_lu
         integer, parameter :: default_tol = 0.01d0 
         
         if (present(tolerance)) then
@@ -494,7 +496,7 @@ contains
     subroutine read_exciton_energies(filename, basis) 
         ! reads exciton energies from file, one per line 
         implicit none 
-        character(len=*), intent(in) :: filename 
+        character(len=:), allocatable, intent(in) :: filename 
         type(exciton_basis), intent(inout) :: basis 
         integer :: ios, i 
         real(8) :: energy 
@@ -522,7 +524,7 @@ contains
     
     subroutine read_exciton_wavefunctions(filename, basis, Nexcc)
         implicit none
-        character(len=*), intent(in) :: filename
+        character(len=:), allocatable, intent(in) :: filename
         integer, intent(in) :: Nexcc
         type(exciton_basis), intent(inout) :: basis
         
@@ -585,7 +587,7 @@ contains
                 exciton_count(current_k) = exciton_count(current_k) + 1
             end if
         end do
-        close(unit)
+        close(104)
         
         ! Now consolidate into basis structure
         allocate(basis%n_components(Nexcc))
@@ -672,10 +674,10 @@ contains
         ! build index map for fast lookup 
 
         implicit none
-        character(len=*), intent(in) :: filename
+        character(len=:), allocatable, intent(in) :: filename
         type(columb_matrix), intent(out) :: mat 
         integer, intent(in) :: nLU, nHO, du, ddo 
-        character(len=*), intent(in) :: mat_type ! 'eeeh' or 'hheh' 
+        character(len=:), allocatable, intent(in) :: mat_type ! 'eeeh' or 'hheh' 
         integer :: ios 
         integer :: j, l, n, k, idx 
         real(8) :: reV, imV
