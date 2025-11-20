@@ -70,11 +70,11 @@ module mod_config
         ! omp parameter 
         integer :: omp_threads ! number of omp threads
         ! file paths 
-        character(len=*) :: wavecar_file 
-        character(len=*) :: exciton_energy_file 
-        character(len=*) :: exciton_wf_file 
-        character(len=*) :: V_ee_file
-        character(len=*) :: V_hh_file
+        character(len=:) :: wavecar_file 
+        character(len=:) :: exciton_energy_file 
+        character(len=:) :: exciton_wf_file 
+        character(len=:) :: V_ee_file
+        character(len=:) :: V_hh_file
         character(len=256) :: output_prefix
     end type biexciton_params
 
