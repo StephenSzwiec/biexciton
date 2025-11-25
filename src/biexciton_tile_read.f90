@@ -485,8 +485,8 @@ module mod_exciton
         real(8), allocatable :: exc(:) ! exciton energies (eV) exc(nexc)
         ! sparse representation of exciton wavefunctions 
         integer, allocatable :: n_components(:) ! nexc(k) number of (e,h) components for exciton k 
-        integer, allocatable :: e_idx(:) ! flattened array of electron band indices ce(Nexc, max)
-        integer, allocatable :: h_idx(:) ! flattened array of hole band indices ch(Nexc, max)
+        integer, allocatable :: e_idx(:,:) ! flattened array of electron band indices ce(Nexc, max)
+        integer, allocatable :: h_idx(:,:) ! flattened array of hole band indices ch(Nexc, max)
         complex(4), allocatable :: psi(:,:) ! wavefunctions 
         ! lookup map from ccc(exc, e, h) -> component index 
         integer, allocatable :: index_map(:,:,:) ! (nexc, nband_e, nband_h)
@@ -836,7 +836,7 @@ contains
         Rh = cmplx(0.0d0, 0.0d0, kind=8) 
 
         do ii = 1, exc_basis%n_components(qq)
-            do kk 1, exc_basis%n_components(be)
+            do kk = 1, exc_basis%n_components(be)
                 ! get band indices for exciton be 
                 l = exc_basis%e_idx(be, kk) ! electron band 
                 n = exc_basis%h_idx(be, kk) ! hole band 
