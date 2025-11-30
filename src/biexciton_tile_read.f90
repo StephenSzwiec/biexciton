@@ -879,7 +879,7 @@ contains
                         jj = V_ee%index_map(k, l, n, j) ! Hermiticity w00t 
                         if (jj > 0) then 
                             V_elem = V_ee%V(jj)
-                            Rh = Rh + conjg(complx(V_elem, kind=8)) * pv * f * psia * rho_cc_b
+                            Rh = Rh + conjg(complex(V_elem, kind=8)) * pv * f * psia * rho_cc_b
                         end if
                     end if
                 end do ! k intermediate electron states
@@ -1155,7 +1155,6 @@ program biexciton_calculation
     call read_wavecar(params%wavecar_file, wavecar, kdata)
     call cpu_time(end_time)
     timing%wavecar_time = end_time - wavecar_time
-    print *, 'WAVECAR read successfully. Number of k-points: ', size(kdata)
     ! gamma point only for now 
     call compute_ho_lu_indices(kdata(1), wavecar%efermi, params%nHO, params%nLU, egap) 
     params%nbandmin = params%nLU - params%du 
