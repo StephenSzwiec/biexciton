@@ -677,7 +677,7 @@ contains
         character(len=:), allocatable, intent(in) :: filename
         type(columb_matrix), intent(out) :: mat 
         integer, intent(in) :: nLU, nHO, du, ddo 
-        character(len=:), allocatable, intent(in) :: mat_type ! 'eeeh' or 'hheh' 
+        character(4) :: mat_type
         integer :: ios 
         integer :: j, l, n, k, idx 
         real(8) :: reV, imV
@@ -1062,6 +1062,7 @@ contains
     subroutine write_results(params, results, exc_basis)
         use mod_config 
         use mod_exciton
+        use mod_biexciton !Results from this called; 
         implicit none 
         type(biexciton_params), intent(in) :: params 
         type(results), intent(in) :: results 
@@ -1098,6 +1099,7 @@ contains
 
     subroutine write_summary(params, timing)
         use mod_config 
+        use mod_biexciton !Needs to be included here?
         implicit none 
         type(biexciton_params), intent(in) :: params 
         
