@@ -879,7 +879,7 @@ contains
                         jj = V_ee%index_map(k, l, n, j) ! Hermiticity w00t 
                         if (jj > 0) then 
                             V_elem = V_ee%V(jj)
-                            Rh = Rh + conjg(complex(V_elem, kind=8)) * pv * f * psia * rho_cc_b
+                            Rh = Rh + conjg(cmplx(V_elem, kind=8)) * pv * f * psia * rho_cc_b
                         end if
                     end if
                 end do ! k intermediate electron states
@@ -1156,14 +1156,16 @@ program biexciton_calculation
     call cpu_time(end_time)
     timing%wavecar_time = end_time - wavecar_time
     ! gamma point only for now 
-    call compute_ho_lu_indices(kdata(1), wavecar%efermi, params%nHO, params%nLU, egap) 
+    call compute_ho_lu_indices(kdata, wavecar%efermi, params%nHO, params%nLU, egap) 
     params%nbandmin = params%nLU - params%du 
     params%nbandmax = params%nHO + params%ddo 
     allocate(energy_bands(params%nbandmin:params%nbandmax))
-    do i = params%nbandmin, params%nbandmax 
-        energy_bands(i) = kdata(1)%band_energies(i)
+    do i = params%nbandmin, params%nbandmax
+        !temporary dummy value, until it is determined if WAVECAR or energy_pop
+        !needed to get energy bands; also, kdata would not hold this property  
+        energy_bands(i) = 1.0 !kdata(1)%band_energies(i)
     end do 
-    call extract_active_bands(kdata(1), params%nbandmin, params%nbandmax, &
+    call extract_active_bands(kdata, params%nbandmin, params%nbandmax, &
                               active_coefs, overlaps)
     call free_kpoint_data(kdata)
 
@@ -1171,7 +1173,7 @@ program biexciton_calculation
     call cpu_time(exciton_time)
     call read_exciton_energies(params%exciton_energy_file, excitons)
     call read_exciton_wavefunctions(params%exciton_wf_file, excitons, excitons%nexc)
-    call build_index_map(excitions, params%nLU, params%du, params%nHO, params%ddo)
+    call build_index_map(excitons, params%nLU, params%du, params%nHO, params%ddo)
     call cpu_time(end_time)
     timing%exciton_time = end_time - exciton_time
     print *, 'Exciton data read successfully. Number of exciton states: ', excitons%nexc 
@@ -1197,7 +1199,7 @@ program biexciton_calculation
     timing%total_time = end_time - start_time 
     call write_summary(params, timing)
     ! Cleanup 
-    call free_exciton_basis(excitions) 
+    call free_exciton_basis(excitons) 
     deallocate(energy_bands)
     print *, 'Biexciton recombination calculation completed.' 
 end program biexciton_calculation
