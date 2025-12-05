@@ -655,6 +655,21 @@ contains
             size(basis%index_map), ' entries (', &
             count(basis%index_map > 0), ' non-zero)'
     end subroutine build_index_map
+
+    subroutine free_exciton_basis(excitons)
+        implicit none
+        type(exciton_basis), intent(inout) :: excitons
+        if (allocated(excitons%exc)) deallocate(excitons%exc)
+        if (allocated(excitons%n_components)) deallocate(excitons%n_components)
+        if (allocated(excitons%e_idx)) deallocate(excitons%e_idx)
+        if (allocated(excitons%h_idx)) deallocate(excitons%h_idx)
+        if (allocated(excitons%psi)) deallocate(excitons%psi)
+        if (allocated(excitons%index_map)) deallocate(excitons%index_map)
+
+
+    end subroutine free_exciton_basis
+
+
 end module mod_exciton
 
 
@@ -1201,7 +1216,7 @@ program biexciton_calculation
     timing%total_time = end_time - start_time 
     call write_summary(params, timing, excitons%nexc)
     ! Cleanup 
-    call free_exciton_basis(excitons) 
+    call free_exciton_basis(excitons)
     deallocate(energy_bands)
     print *, 'Biexciton recombination calculation completed.' 
 end program biexciton_calculation
