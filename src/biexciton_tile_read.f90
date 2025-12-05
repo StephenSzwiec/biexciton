@@ -777,11 +777,11 @@ module mod_biexciton
     use mod_coulomb 
     implicit none 
 
-    type :: results 
+    type :: results_bi 
         real(8) :: total_rate ! total biexciton recombination rate 
-        real(8), allocatable :: matrix_elements(:,:,:) ! (qq, ae, be) 
+        real(8), allocatable :: matrix_elements(:,:) ! (ae, be) 
         integer :: n_calculated 
-    end type results 
+    end type results_bi 
 
 contains 
     function lorentzian_delta(dE, gamma_b) result(deltaexc)
@@ -929,7 +929,7 @@ contains
         type(exciton_basis), intent(in) :: exc_basis 
         type(columb_matrix), intent(in) :: V_ee, V_hh 
         real(8), intent(in) :: energy_bands(:) 
-        type(results), intent(out) :: results 
+        type(results_bi), intent(out) :: results 
 
         integer :: nthreads, tid, i 
         integer :: ae_start, ae_end, ae, be 
@@ -1065,7 +1065,7 @@ contains
         use mod_biexciton !Results from this called; 
         implicit none 
         type(biexciton_params), intent(in) :: params 
-        type(results), intent(in) :: results 
+        type(results_bi), intent(in) :: results 
         type(exciton_basis), intent(in) :: exc_basis 
         character(len=256) :: filename 
         integer :: ae, be 
@@ -1097,19 +1097,21 @@ contains
         print *, 'Matrix elements for ', results%n_calculated, ' exciton pairs computed.'
     end subroutine write_results
 
-    subroutine write_summary(params, timing)
+    subroutine write_summary(params, timing,nexc)
         use mod_config 
-        use mod_biexciton !Needs to be included here?
+        use mod_biexciton 
         implicit none 
-        type(biexciton_params), intent(in) :: params 
-        
+        type(biexciton_params), intent(in) :: params
+        integer :: nexc
+        type(timing_info), intent(in) :: timing
+         
         character(len=256) :: filename 
         filename = trim(params%output_prefix) // 'summary.txt'
         open(unit=202, file=trim(filename), status='replace', action='write')
         write(202, '(A)') 'Biexciton Recombination Calculation Summary'
         write(202, '(A,I6)') 'Initial exciton index (qq): ', params%qq
         write(202, '(A,I6)') 'Number of active bands: ', params%nbandmax - params%nbandmin + 1
-        write(202, '(A,I6)') 'Number of exciton states: ', params%nexc 
+        write(202, '(A,I6)') 'Number of exciton states: ', nexc 
         write(202, '(A,I6)') 'OpenMP threads used: ', params%omp_threads
         write(202, '(A,F8.2)') 'Total computation time (s): ', timing%total_time
         write(202, '(A,F8.2)') 'Time reading WAVECAR (s): ', timing%wavecar_time
@@ -1137,7 +1139,7 @@ program biexciton_calculation
     type(exciton_basis) :: excitons 
     type(columb_matrix) :: V_ee, V_hh 
     type(kpoint_data) :: kdata
-    type(results) :: results 
+    type(results_bi) :: results 
     type(timing_info) :: timing 
     complex(8), allocatable :: active_coefs(:,:) ! (nband_active, npw) 
     real(8), allocatable :: energy_bands(:) ! (nband_active) 
@@ -1190,14 +1192,14 @@ program biexciton_calculation
     call setup_omp(params%omp_threads) 
     call compute_load_balance(params%qq, params%omp_threads, ranges)
     ! 6. Compute biexciton recombination rate 
-    call parallel_biexciton_loop(ranges, params, excitons, V_ee, V_hh, results)
+    call parallel_biexciton_loop(ranges, params, excitons, V_ee, V_hh, energy_bands, results)
     call cpu_time(end_time)
     timing%biexciton_time = end_time - biexciton_time
     ! 7. Output results 
-    call write_results(params, results)
+    call write_results(params, results, excitons)
     call cpu_time(end_time) 
     timing%total_time = end_time - start_time 
-    call write_summary(params, timing)
+    call write_summary(params, timing, excitons%nexc)
     ! Cleanup 
     call free_exciton_basis(excitons) 
     deallocate(energy_bands)
