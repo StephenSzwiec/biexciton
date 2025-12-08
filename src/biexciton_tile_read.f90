@@ -1178,9 +1178,9 @@ program biexciton_calculation
     params%nbandmax = params%nHO + params%ddo 
     allocate(energy_bands(params%nbandmin:params%nbandmax))
     do i = params%nbandmin, params%nbandmax
-        !temporary dummy value, until it is determined if WAVECAR or energy_pop
-        !needed to get energy bands; also, kdata would not hold this property  
-        energy_bands(i) = 1.0 !kdata(1)%band_energies(i)
+        !test if eigenvalues (energy eigenvalues) written to conform this works  
+        energy_bands(i) = kdata%eig(i)
+        write(*,*) "energy band and val: ", i, energy_bands(i)
     end do 
     call extract_active_bands(kdata, params%nbandmin, params%nbandmax, &
                               active_coefs, overlaps)
