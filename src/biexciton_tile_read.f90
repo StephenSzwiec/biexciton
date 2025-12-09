@@ -22,7 +22,7 @@
 ! 
 !!! Input files: 
 ! - "WAVECAR" : contains KS wavefunctions, VASP binary, in plane-wave basis
-! - "exeC" : contains pre-computed (BSE/TDDFT??) exciton energies, one per line
+! - "excE" : contains pre-computed (BSE/TDDFT??) exciton energies, one per line
 ! - "excwf_trunc" : sparse representation of exciton wavefunctions(k,j,i):
 ! ```
 ! # exciton_index 
@@ -142,7 +142,7 @@ contains
             case ('--wavecar', '-w', '--WAVECAR')
                 call get_command_argument(iarg+1, wavecar_file)
                 params%wavecar_file = trim(wavecar_file)
-            case ('--exciton_energy', '-e', '--exeC')
+            case ('--exciton_energy', '-e', '--excE')
                 call get_command_argument(iarg+1, exciton_energy_file)
                 params%exciton_energy_file = trim(exciton_energy_file)
             case ('--exciton_wf', '-f', '--wf', '--excwf_trunc')
@@ -184,7 +184,7 @@ contains
 
         ! evaluate what we now have, and if that makes sense
         if (params%wavecar_file == '') params%wavecar_file = 'WAVECAR' 
-        if (params%exciton_energy_file == '') params%exciton_energy_file = 'exeC'
+        if (params%exciton_energy_file == '') params%exciton_energy_file = 'excE'
         if (params%exciton_wf_file == '') params%exciton_wf_file = 'excwf_trunc'
         if (params%V_ee_file == '') params%V_ee_file = 'VCe1ehe2'
         if (params%V_hh_file == '') params%V_hh_file = 'VCh1ehh2'
